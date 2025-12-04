@@ -32,21 +32,21 @@ if(file.exists(path_logo_jabar)) {
 # 2. DATA LOADING & PREPROCESSING
 # ==============================================================================
 
-# Nama file CSV
-file_csv <- "Susenas_Jabar_2024_SIAP_PAKAI.csv"
+# A. DATA UTAMA
+file_utama <- "Susenas_Jabar_2024_SIAP_PAKAI.csv"
+if(!file.exists(file_utama)) stop("ERROR: File 'Susenas_Jabar_2024_SIAP_PAKAI.csv' tidak ditemukan!")
+raw_data <- read_csv(file_utama, show_col_types = FALSE)
 
-if(!file.exists(file_csv)) {
-  stop("ERROR FATAL: File 'Susenas_Jabar_2024_SIAP_PAKAI.csv' tidak ditemukan.")
-}
+# B. DATA EKONOMI (BLOK 43)
+file_eko <- "Data_Ekonomi_Jabar_2024.csv"
+if(!file.exists(file_eko)) stop("ERROR: File 'Data_Ekonomi_Jabar_2024.csv' tidak ditemukan!")
+raw_eko <- read_csv(file_eko, show_col_types = FALSE)
 
-raw_data <- read_csv(file_csv, show_col_types = FALSE)
 
-# Standarisasi Nama Kolom
-if("Kode_KabKota" %in% names(raw_data)) {
-  raw_data <- raw_data %>% rename(KabKota = Kode_KabKota)
-}
 # Pastikan KabKota ada isinya untuk mapping
+if("Kode_KabKota" %in% names(raw_data)) raw_data <- raw_data %>% rename(KabKota = Kode_KabKota)
 raw_data$KabKota_Angka <- as.numeric(as.character(raw_data$KabKota))
+
 
 # --- 2.1. Mapping & Cleaning Data (FINAL & ROBUST JKN) ---
 dummy <- raw_data %>%
@@ -83,12 +83,15 @@ dummy <- raw_data %>%
       TRUE ~ paste("Kode", KabKota)
     ),
     
+    Hubungan_KRT = as.numeric(Hubungan_KRT),
+    
     # --- 2. DEMOGRAFI ---
     kecamatan = "Semua", 
     kelurahan = "Semua", 
     gender = ifelse(Jenis_Kelamin %in% c("1", "Laki-laki"), "Laki-laki", "Perempuan"),
     urban_rural = ifelse(Tipe_Daerah %in% c("1", "Perkotaan"), "Perkotaan", "Perdesaan"),
     age = as.numeric(Umur),
+    
     
     status_kawin = case_when(
       as.numeric(Status_Kawin) == 1 ~ "Belum Kawin",
@@ -166,16 +169,17 @@ dummy <- raw_data %>%
     
     # --- 6. EKONOMI ---
     
-    # --- VARIABEL BARU: PEKERJAAN & PENGHASILAN ---
+    
+    # 1. Sumber Penghasilan
     sumber_penghasilan = case_when(
       as.numeric(Sumber_Penghasilan) == 1 ~ "Bekerja (Gaji/Upah)",
-      as.numeric(Sumber_Penghasilan) == 2 ~ "Kiriman uang/barang",
+      as.numeric(Sumber_Penghasilan) == 2 ~ "Kiriman Uang/Barang",
       as.numeric(Sumber_Penghasilan) == 3 ~ "Investasi",
       as.numeric(Sumber_Penghasilan) == 4 ~ "Pensiunan",
       TRUE ~ "Tidak Ada Data"
     ),
     
-    # Sektor Pekerjaan (Hanya relevan untuk yang bekerja, Kode KBKI)
+    # 2. Sektor Pekerjaan (Dari Kode Lapangan Usaha)
     # 1=Pertanian, 2=Industri, 3=Pengadaan Air/Listrik, 4=Konstruksi, 5-9=Jasa
     sektor_pekerjaan = case_when(
       is.na(Lapangan_Usaha) ~ "Tidak Bekerja/Lainnya",
@@ -185,11 +189,29 @@ dummy <- raw_data %>%
       as.numeric(Lapangan_Usaha) %in% c(5:9) ~ "Perdagangan & Jasa",
       TRUE ~ "Lainnya"
     ),
+  
     
     
-    pengeluaran = as.numeric(Luas_Lantai), 
+    # Proxy Ekonomi (Lama)
     miskin = ifelse(as.numeric(Jenis_Lantai) >= 7 & as.numeric(Fasilitas_BAB) != 1, "Rentan", "Tidak Rentan"),
     disabilitas = "Tidak Ada Data" 
+  )
+
+# --- 2.2. Mapping Data Ekonomi (Rupiah) ---
+dummy_eko <- raw_eko %>%
+  mutate(
+    kabkota = case_when(
+      KabKota_Angka == 1 ~ "Kab. Bogor", KabKota_Angka == 2 ~ "Kab. Sukabumi", KabKota_Angka == 3 ~ "Kab. Cianjur",
+      KabKota_Angka == 4 ~ "Kab. Bandung", KabKota_Angka == 5 ~ "Kab. Garut", KabKota_Angka == 6 ~ "Kab. Tasikmalaya",
+      KabKota_Angka == 7 ~ "Kab. Ciamis", KabKota_Angka == 8 ~ "Kab. Kuningan", KabKota_Angka == 9 ~ "Kab. Cirebon",
+      KabKota_Angka == 10 ~ "Kab. Majalengka", KabKota_Angka == 11 ~ "Kab. Sumedang", KabKota_Angka == 12 ~ "Kab. Indramayu",
+      KabKota_Angka == 13 ~ "Kab. Subang", KabKota_Angka == 14 ~ "Kab. Purwakarta", KabKota_Angka == 15 ~ "Kab. Karawang",
+      KabKota_Angka == 16 ~ "Kab. Bekasi", KabKota_Angka == 17 ~ "Kab. Bandung Barat", KabKota_Angka == 18 ~ "Kab. Pangandaran",
+      KabKota_Angka == 71 ~ "Kota Bogor", KabKota_Angka == 72 ~ "Kota Sukabumi", KabKota_Angka == 73 ~ "Kota Bandung",
+      KabKota_Angka == 74 ~ "Kota Cirebon", KabKota_Angka == 75 ~ "Kota Bekasi", KabKota_Angka == 76 ~ "Kota Depok",
+      KabKota_Angka == 77 ~ "Kota Cimahi", KabKota_Angka == 78 ~ "Kota Tasikmalaya", KabKota_Angka == 79 ~ "Kota Banjar",
+      TRUE ~ paste("Kode", KabKota_Angka)
+    )
   )
 
 # --- 2.2. Centroid Peta ---
@@ -347,27 +369,20 @@ ui <- page_navbar(
                                  div(class="col-md-4 mb-4", div(class="card shadow-sm p-4", tags$h4("Bahan Bakar Masak", style="font-weight:600;"), highchartOutput("bar_bakar", height="350px")))))),
   
   # --- EKONOMI (UPDATE: TAMBAH GRAFIK PEKERJAAN & PENGHASILAN) ---
-  nav_panel("Ekonomi", div(class="container mt-4 mb-5", tags$h2("Analisis Ekonomi & Kesejahteraan"), 
+  nav_panel("Ekonomi", div(class="container mt-4", h2("Analisis Ekonomi & Pekerjaan"), 
+                           div(class="alert alert-success", icon("check-circle"), " Menampilkan Data Pengeluaran (Blok 43) dan Profil Pekerjaan Kepala Rumah Tangga."),
                            
-                           div(class="alert alert-success", icon("check-circle"), " Data bersumber dari Modul Konsumsi (Pengeluaran Rupiah) dan Modul KOR (Profil Pekerjaan)."),
-                           
-                           # --- BARIS 1: PROFIL PEKERJAAN & PENGHASILAN (BARU) ---
+                           # Baris 1: Grafik Sumber Penghasilan & Sektor Pekerjaan (BARU!)
                            layout_columns(col_widths=c(6,6), class="mb-4",
                                           div(class="chart-card", h4("Sumber Penghasilan Utama Rumah Tangga"), highchartOutput("pie_sumber_income")),
                                           div(class="chart-card", h4("Sektor Pekerjaan Kepala Rumah Tangga"), highchartOutput("pie_sektor_kerja"))
                            ),
                            
-                           # --- BARIS 2: PENGELUARAN RUPIAH ---
-                           div(class="row", 
-                               div(class="col-md-8 mb-4", div(class="chart-card", tags$h4("Rata-rata Pengeluaran Perkapita (Rupiah/Bulan)"), highchartOutput("bar_pengeluaran", height="350px"))), 
-                               div(class="col-md-4 mb-4", div(class="chart-card", tags$h4("Proporsi Pengeluaran Jabar"), highchartOutput("pie_pangan", height="350px")))
-                           ), 
-                           
-                           # --- BARIS 3: PETA KERENTANAN (LAMA) ---
-                           div(class="row", div(class="col-md-12 mb-4", div(class="card shadow-sm p-4", tags$h4("Peta Kerentanan Fisik (Sanitasi & Lantai Tanah)"), leafletOutput("map_kemiskinan", height="500px"))))
+                           # Baris 2: Pengeluaran Rupiah
+                           layout_columns(col_widths=c(8,4), highchartOutput("bar_pengeluaran"), highchartOutput("pie_pangan")),
+                           leafletOutput("map_kalori", height="500px")
   )),
   
-
   # --- TIM ---
   nav_panel("Tim",
             div(class="container mt-5 mb-5",
@@ -428,6 +443,9 @@ server <- function(input, output, session) {
     colors = colors_pastel, 
     chart = list(style = list(fontFamily = "Poppins"), backgroundColor = "transparent"), 
     title = list(style = list(color = "#333333", fontWeight = "bold")), 
+    
+    data_main <- reactive({ dummy }),
+    data_eko  <- reactive({ dummy_eko }),
     
     # --- PENGATURAN LEGENDA (Di Bawah) ---
     legend = list(
@@ -536,76 +554,37 @@ server <- function(input, output, session) {
   
   # --- LOGIC EKONOMI (UPDATE) ---
   
-  # 1. Grafik Sumber Penghasilan (Pie Chart)
   output$pie_sumber_income <- renderHighchart({
-    # Filter hanya Rumah Tangga (Hubungan_KRT = 1) agar tidak double count
     d <- data_main() %>% 
       filter(Hubungan_KRT == 1) %>% 
       group_by(sumber_penghasilan) %>% 
-      summarise(n = sum(Penimbang, na.rm=TRUE))
+      # PERBAIKAN 1: Tambah na.rm=TRUE (Anti Gagal Hitung)
+      summarise(n = sum(Penimbang, na.rm = TRUE)) %>%
+      # PERBAIKAN 2: Buang kategori yang kosong/tidak jelas
+      filter(!is.na(sumber_penghasilan))
     
     hchart(d, "pie", hcaes(name=sumber_penghasilan, y=n)) %>% 
-      hc_title(text="") %>% 
-      hc_tooltip(pointFormat = "<b>{point.name}</b>: {point.y:,.0f} KK ({point.percentage:.1f}%)")
+      hc_title(text="") 
   })
   
-  # 2. Grafik Sektor Pekerjaan KRT (Pie Chart)
   output$pie_sektor_kerja <- renderHighchart({
-    # Filter hanya Kepala Rumah Tangga
-    d <- data_main() %>% 
-      filter(Hubungan_KRT == 1) %>% 
-      group_by(sektor_pekerjaan) %>% 
-      summarise(n = sum(Penimbang, na.rm=TRUE))
-    
-    hchart(d, "pie", hcaes(name=sektor_pekerjaan, y=n)) %>% 
-      hc_title(text="") %>%
-      hc_tooltip(pointFormat = "<b>{point.name}</b>: {point.y:,.0f} Orang ({point.percentage:.1f}%)")
+    # Filter hanya Kepala Rumah Tangga (KRT)
+    d <- data_main() %>% filter(Hubungan_KRT == 1) %>% group_by(sektor_pekerjaan) %>% summarise(n = sum(Penimbang))
+    hchart(d, "pie", hcaes(name=sektor_pekerjaan, y=n))
   })
   
-  # 3. Grafik Pengeluaran Rupiah (Bar Chart) - Pakai data_eko()
   output$bar_pengeluaran <- renderHighchart({
-    d <- data_eko() %>% 
-      group_by(kabkota) %>% 
-      summarise(v = weighted.mean(Pengeluaran_PerKapita, Penimbang_Penduduk, na.rm=TRUE)) %>% 
-      arrange(desc(v))
-    
-    hchart(d, "column", hcaes(x=kabkota, y=v), color="#4CAF50") %>% 
-      hc_title(text="") %>% 
-      hc_yAxis(title=list(text="Rupiah"), labels=list(format="{value:,.0f}")) %>%
-      hc_tooltip(pointFormat = "Rata-rata: <b>Rp {point.y:,.0f}</b>")
+    d <- data_eko() %>% group_by(kabkota) %>% summarise(v = weighted.mean(Pengeluaran_PerKapita, Penimbang_Penduduk, na.rm=T)) %>% arrange(desc(v))
+    hchart(d, "column", hcaes(x=kabkota, y=v)) %>% hc_title(text="Rata-rata Pengeluaran Perkapita (Rupiah/Bulan)") %>% hc_yAxis(labels=list(format="{value:,.0f}"))
   })
-  
-  # 4. Grafik Proporsi Pangan (Pie Chart) - Pakai data_eko()
   output$pie_pangan <- renderHighchart({
-    d <- data_eko() %>% 
-      summarise(
-        Pangan = sum(Makanan_Rupiah * Penimbang_RT, na.rm=TRUE), 
-        NonPangan = sum(NonMakanan_Rupiah * Penimbang_RT, na.rm=TRUE)
-      ) %>% 
-      pivot_longer(cols=everything(), names_to="Tipe", values_to="Nilai")
-    
-    hchart(d, "pie", hcaes(name=Tipe, y=Nilai)) %>% 
-      hc_title(text="") %>%
-      hc_colors(c("#FFD54F", "#81D4FA")) # Kuning (Pangan), Biru (Non)
+    d <- data_eko() %>% summarise(Pangan = sum(Makanan_Rupiah*Penimbang_RT, na.rm=T), NonPangan = sum(NonMakanan_Rupiah*Penimbang_RT, na.rm=T)) %>% pivot_longer(cols=everything(), names_to="Tipe", values_to="Nilai")
+    hchart(d, "pie", hcaes(name=Tipe, y=Nilai)) %>% hc_title(text="Proporsi Pengeluaran Jabar")
   })
-  
-  # 5. Peta Kerentanan (Tetap pakai data_main / KOR)
-  output$map_kemiskinan <- renderLeaflet({ 
-    d <- dummy %>% 
-      group_by(kabkota) %>% 
-      summarise(poverty_rate = sum(Penimbang[miskin=="Rentan"])/sum(Penimbang)*100) %>% 
-      left_join(centroids, by="kabkota")
-    
-    pal <- colorNumeric("Reds", d$poverty_rate)
-    
-    leaflet(d) %>% 
-      addProviderTiles(providers$CartoDB.Positron) %>% 
-      addCircleMarkers(~lon, ~lat, radius=~scales::rescale(poverty_rate, to=c(5,20)), 
-                       color=~pal(poverty_rate), fillOpacity=0.8, stroke=FALSE, 
-                       popup=~paste0("<b>",kabkota,"</b><br>Rentan Fisik: ",round(poverty_rate,2),"%")) %>% 
-      addLegend("bottomright", pal=pal, values=~poverty_rate, title="Kerentanan (%)") 
+  output$map_kalori <- renderLeaflet({
+    d <- data_eko() %>% group_by(kabkota) %>% summarise(v = weighted.mean(Kalori_PerKapita, Penimbang_Penduduk, na.rm=T)) %>% left_join(centroids)
+    pal <- colorNumeric("YlGn", d$v); leaflet(d) %>% addProviderTiles(providers$CartoDB.Positron) %>% addCircleMarkers(~lon,~lat, radius=10, color=~pal(v), popup=~paste(kabkota, round(v),"kkal")) %>% addLegend("bottomright", pal=pal, values=~v, title="Kalori/Kapita")
   })
-
 }
 
 shinyApp(ui, server)
